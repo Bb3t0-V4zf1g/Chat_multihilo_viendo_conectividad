@@ -1,72 +1,79 @@
-import socket, threading, json #import the modules to use sockets and threads
+import socket, threading, json #importar modulos
 
+# Diccionario que guardar como clave la conexion y como valor el nickname del cliente
 nicknames = {}
 
 def send_message_to_all(message, sender):
+    # Recorrer cada cliente conectado y enviar el mensaje a todos excepto al remitente
     for client in nicknames.keys():
-        if client != sender:  # Don't send the message back to the sender
+        if client != sender:  # Menos al remitente
             try:
                 client.sendall(message.encode())
             except Exception as e:
-                print(f"Error sending message to {nicknames.get(client)}: {e}") # Print any exceptions that occur while sending messages
+                print(f"Error sending message to {nicknames.get(client)}: {e}") # Imprimir un mensaje de error 
 
 def manage_client(conexion, cb):
+    # Variable para almacenar los datos recibidos del cliente
     data = None
     try:
-        # While loop to continuously receive data from the client until the connection is closed
+        # Bucle para seguir recibiendo datos del cliente mientras la conexión esté activa
         while True:
-            # Receive data from the client
+            # Recibe los datos del cliente en bytes
             received = conexion.recv(1024)
-            # If no data is received, break the loop and close the connection
+            # Si no se reciben datos, significa que el cliente ha cerrado la conexión, por lo que se rompe el bucle
             if not received:
                 break
-            # Parse the received data as JSON
+            # Decodifica los datos recibidos de bytes a string y luego los carga como un objeto JSON
             data = json.loads(received.decode())
 
             if data["type"] == "register":
-                # If the received data is a registration request, store the nickname of the client
+                # Si el tipo de datos recibido es "register", se guarda el cliente enel diccionario de nicknames 
                 nicknames[conexion] = data["name"]
-                conexion.sendall(f"Welcome {nicknames[conexion]}!".encode())
+                conexion.sendall(f"Welcome {nicknames[conexion]}!".encode()) # Se envía un mensaje de bienvenida al cliente
 
             elif data["type"] == "message":
-                print(f"{nicknames.get(conexion)}: {data['message']}") # Print the received message from the client
-                # Send a response back to the all the clients connected to the server
+                print(f"{nicknames.get(conexion)}: {data['message']}") # Imprimir el mensaje recibido del cliente en la consola del servidor
+                # Enviar el mensaje a todos los clientes conectados excepto al remitente
                 cb(f"{nicknames.get(conexion)}: {data['message']}", conexion)
+
             elif data["type"] == "whois":
-                # If the received data is a request for the list of connected clients, send the list back to the client
+                # Si el tipo de datos recibido es "whois", se envía al cliente una lista de todos los clientes conectados
                 connected_clients = [name for name in nicknames.values()]
                 conexion.sendall(f"Connected clients: {', '.join(connected_clients)}".encode())
     except (ConnectionResetError, OSError) as e:
-        # Handle the case where the client disconnects abruptly
+        # Manejar el caso donde el cliente cierra la conexión abruptamente
         print(f"{nicknames.get(conexion)} disconnected abruptly: {e}")
     except ConnectionAbortedError as e:
-        # Handle the case where the client aborts the connection
+        # Manejar el caso donde la conexión es abortada
         print(f"{nicknames.get(conexion)} aborted the connection: {e}")
     finally:
-        cb(f"{nicknames.get(conexion)} has left the chat.", conexion) # Send a message to all clients indicating that the client has left the chat
+        # Notificar a todos los clientes que el cliente se ha desconectado
+        cb(f"{nicknames.get(conexion)} has left the chat.", conexion) 
         try:
-            # Remove the nickname of the disconnected client from the dictionary
+            # Remover el cliente del diccionario de nicknames cuando se desconecta
             del nicknames[conexion] 
         except (KeyError, RuntimeError):
+            # Manejar cuando el diccionario es modificado mientras los clientes están siendo iterados
             pass
         finally:
-            # Close the connection with the client
+            # Cerrar la conexión con el cliente
             conexion.close()
 
-# Create a TCP socket and bind it to localhost on port 6000
+# Crear un socket TCP para el servidor
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# Configurar el socket para conectar a la dirección 'localhost' en el puerto 6000
 server.bind(('localhost', 6000))
 
-# Start listening for incoming connections with a backlog of 5
-server.listen(5)
-print("Server listening on port 6000...") # Print a message indicating that the server is listening for incoming connections
+# El servidor comienza a escuchar conexiones entrantes en el puerto especificado
+server.listen()
+print("Server listening on port 6000...") # Imprimir un mensaje indicando que el servidor está escuchando en el puerto 6000
 
-# Start an infinite loop to accept incoming connections and handle them in separate threads
+# Empezar un bucle infinito para aceptar conexiones entrantes de clientes
 while True:
-    # Accept an incoming connection from a client
+    # Aceptar una conexión entrante de un cliente
     conexion, address = server.accept()
-    print(f"Somebody connected from {address}") # Print a message indicating that a connection has been established with the client
-    # Create a new thread to handle the client connection
+    print(f"Somebody connected from {address}") # Imprimir un mensaje indicando que se ha establecido una conexión con el cliente
+    # Crear un hilo para manejar la conexión del cliente, pasando la función manage_client y los argumentos necesarios
     client_thread = threading.Thread(target=manage_client, args=(conexion, send_message_to_all))
-    # Start the client thread to handle the connection
+    # Empezar el hilo para manejar la conexión del cliente
     client_thread.start()

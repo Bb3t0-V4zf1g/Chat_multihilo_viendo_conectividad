@@ -1,66 +1,75 @@
-import socket, json, threading
+import socket, json, threading # importar los modulos
 
-# Function to receive messages from the server in a separate thread
+# Funcion para recibir mensajes del servidor
 def receive_messages(client, name):
     while True:
         try:
-            # Wait for a message from the server
+            # Esperar a recibir un mensaje del servidor
             message = client.recv(1024)
-            # If no message is received, it means the server has disconnected, so print a message and break the loop
+            # Si no se recibe ningún mensaje, significa que el servidor se ha desconectado, por lo que se rompe el bucle
             if not message:
                 print("Servidor desconectado.")
                 break
-            print(f"\r\033[K{message.decode()}\n{name}: ", end="", flush=True) # Print the message and redraw the prompt
+            # Imprimir el mensaje recibido 
+            # \r para mover el cursor en la linea actual sin pasar a la siguiente linea
+            # \033 es "esc" en código ASCII y esto evita que queden restos de texto antiguo en pantalla. Desde el cursor hasta el final de la linea
+            # \n Después de imprimir el mensaje recibido, pasa a la siguiente línea.
+            # end= "" evita un salto de linea adicional
+            # flush, Fuerza a que la salida se muestre inmediatamente en pantalla.
+            print(f"\r\033[K{message.decode()}\n{name}: ", end="", flush=True) 
         except Exception:
             pass
             break
 
-# Create a TCP socket
+# Crear un socket por parte del cliente
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 try:
-    # Connect to the server on localhost at port 6000
+    # Conectar el cliente al localhost y puerto 6000
     client.connect(("localhost", 6000))
 
-    # Prompt the user to enter a nickname
+    # Input para recibir por parte dle usuario un nombre o apodo
     name = input("Enter your nickname: ")
 
-    # Send a registration request to the server with the nickname
+    # Enviar un mensaje de tipo regirtro para que el servidor lo reconozca por su apodo o nombre esta conexión
     client.sendall(json.dumps({
         "type": "register",
         "name": name
     }).encode())
 
-    # Receive the welcome before starting the thread and the input prompt
+    # Imprimir lo que el servidor le envía al cliente
     print(client.recv(1024).decode())
 
-    # Start a separate thread to receive messages from the server
+    # Iniciar un hilo en donde se ejecuta en segundo plano para recibir cada mensaje que el servidor le envía a esta conexión
     threading.Thread(
         target=receive_messages,
         args=(client, name),
         daemon=True
     ).start()
 
-    # Main thread for sending messages
+    # Hilo principal para envíar mensajes al servidor sin limites
     while True:
-        # Wait for user input to send a message to the server
+        # Esperar a que el cliente ingrese su mensaje a enviar
         message = input(f"{name}: ")
 
-        # If the user types 'exit', break the loop and close the connection
+        # Si el cliente ingresa "/exit" se desconecta
         if message.lower() == "/exit":
             print("Exiting the chat...")
             break
+
+        # Si el cliente ingresa "/quienes" se le retorna una lista de los clientes conectados
         if message.lower() == "/quienes":
             client.sendall(json.dumps({
                 "type": "whois"
             }).encode())
 
-        # Send the message to the server as a JSON object
+        # Enviar el mensaje del cliente en JSON al servidor y el servifor lo envía a todos los clientes conectados
         client.sendall(json.dumps({
             "type": "message",
             "message": message
         }).encode())
 
+# Manejar la salida por ctrl + C
 except KeyboardInterrupt:
     print("\nExiting the chat...")
 
@@ -68,5 +77,5 @@ except Exception as e:
     print(f"Error: {e}")
 
 finally:
-    # Close the connection with the server
+    # Cerrar la conexión del cliente
     client.close()
